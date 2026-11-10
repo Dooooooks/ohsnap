@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Tell ohsnap.lua the instant the left mouse button is released.
+
+Hyprland's titlebar plugin swallows the mouse button during a titlebar drag, so
+the snap plugin can't see the release itself. This reads it straight from the
+mouse devices (needs the `input` group) and calls window_snap_release() in
+Hyprland's Lua. Only the left button's release is read; nothing else is kept.
+
+Started and restarted by SnapPreview.qml. Exits with 77 when it may not read
+the mouse (user not in the `input` group), which tells the shell not to retry.
+"""
+
+import os
+import re
+import select
+import struct
+import subprocess
+import sys
+import time
+
+EVENT = struct.Struct("llHHi")  # struct input_event on 64-bit
+NO_PERMISSION = 77
+EV_KEY = 1
+BTN_LEFT = 0x110
+RESCAN_SECONDS = 5
+
+
+def mouse_event_nodes():
+    """/dev/input/eventN for every device the kernel lists as a mouse."""
+    nodes = []
+    try:
+        with open("/proc/bus/input/devices") as f:
+            blocks = f.read().split("\n\n")
+    except OSError:
+        return nodes
+    for block in blocks:
+        m = re.search(r"^H: Handlers=(.*)$", block, re.M)
+        if not m:
+            continue
+        handlers = m.group(1).split()
+        if any(re.fullmatch(r"mouse\d+", h) for h in handlers):
+            for h in handlers:
+                if re.fullmatch(r"event\d+", h):
+                    nodes.append("/dev/input/" + h)
+    return nodes
+
+
+def notify():
+    subprocess.Popen(
+        ["hyprctl", "eval", "if window_snap_release then window_snap_release() end"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def main():
+    if EVENT.size != 24:
+        print("ohsnap-watch: only 64-bit systems are supported", file=sys.stderr)
+        sys.exit(NO_PERMISSION)
+    open_fds = {}  # path -> fd
+    last_scan = 0.0
+    denied = False
+
+    while True:
+        now = time.monotonic()
+        if now - last_scan >= RESCAN_SECONDS or not open_fds:
+            last_scan = now
+            for path in mouse_event_nodes():
+                if path in open_fds:
+                    continue
+                try:
+                    open_fds[path] = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+                except PermissionError:
+                    if not denied:
+                        print(f"ohsnap-watch: no permission for {path}; "
+                              "add yourself to the 'input' group", file=sys.stderr)
+                        denied = True
+                except OSError:
+                    pass
+
+        if not open_fds:
+            if denied:
+                sys.exit(NO_PERMISSION)
+            time.sleep(RESCAN_SECONDS)
+            continue
+
+        ready, _, _ = select.select(list(open_fds.values()), [], [], RESCAN_SECONDS)
+        for fd in ready:
+            try:
+                data = os.read(fd, EVENT.size * 64)
+            except BlockingIOError:
+                continue
+            except OSError:
+                # Unplugged.
+                for path, f in list(open_fds.items()):
+                    if f == fd:
+                        os.close(fd)
+                        del open_fds[path]
+                continue
+            released = False
+            for off in range(0, len(data) - EVENT.size + 1, EVENT.size):
+                _, _, etype, code, value = EVENT.unpack_from(data, off)
+                if etype == EV_KEY and code == BTN_LEFT and value == 0:
+                    released = True
+            if released:
+                notify()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

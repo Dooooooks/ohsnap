@@ -1,0 +1,28 @@
+#!/bin/bash
+# Remove OhSnap from hyprland.lua and disable its shell side. Then remove the
+# plugin folder with: omarchy plugin remove dooooooks.ohsnap
+
+set -euo pipefail
+
+hyprland="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/hyprland.lua"
+begin='-- >>> OhSnap (dooooooks.ohsnap) >>>'
+end='-- <<< OhSnap (dooooooks.ohsnap) <<<'
+
+if [[ -f $hyprland ]] && grep -qF -- "$begin" "$hyprland"; then
+  backup="$hyprland.bak.$(date +%s)"
+  cp -- "$hyprland" "$backup"
+  # Drop the block and the blank line install put before it.
+  # Drop the block, and the blank lines install put just before it.
+  awk -v b="$begin" -v e="$end" '
+    $0 == b { blanks = ""; skip = 1; next }
+    skip { if ($0 == e) skip = 0; next }
+    $0 == "" { blanks = blanks "\n"; next }
+    { printf "%s", blanks; blanks = ""; print }
+    END { printf "%s", blanks }
+  ' "$backup" >"$hyprland"
+  echo "ohsnap: removed OhSnap from $hyprland (backup: $backup)"
+fi
+
+omarchy plugin disable dooooooks.ohsnap >/dev/null 2>&1 || true
+hyprctl reload >/dev/null || true
+echo "ohsnap: disabled. To leave the input group too: sudo gpasswd -d $USER input"

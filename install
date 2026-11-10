@@ -1,0 +1,85 @@
+#!/bin/bash
+# OhSnap setup: load the snapping logic into Hyprland and, optionally, let the
+# mouse-release watcher read the mouse. Safe to run again.
+#
+#   ./install                   ask about the input group
+#   ./install --input-group     add yourself to the input group without asking
+#   ./install --no-input-group  skip it (snaps on the next mouse movement instead)
+
+set -euo pipefail
+
+plugin_id="dooooooks.ohsnap"
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+hyprland="$config_home/hypr/hyprland.lua"
+begin='-- >>> OhSnap (dooooooks.ohsnap) >>>'
+end='-- <<< OhSnap (dooooooks.ohsnap) <<<'
+
+input_group="ask"
+for arg in "$@"; do
+  case $arg in
+    --input-group) input_group="yes" ;;
+    --no-input-group) input_group="no" ;;
+    -h|--help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "install: unknown option $arg" >&2; exit 2 ;;
+  esac
+done
+
+say() { echo "ohsnap: $*"; }
+
+if [[ ! -f $hyprland ]]; then
+  echo "ohsnap: $hyprland not found. OhSnap needs Omarchy with Hyprland's Lua config." >&2
+  exit 1
+fi
+
+# 1. Load ohsnap.lua from hyprland.lua.
+if grep -qF -- "$begin" "$hyprland"; then
+  say "hyprland.lua already loads OhSnap."
+else
+  backup="$hyprland.bak.$(date +%s)"
+  cp -- "$hyprland" "$backup"
+  cat >>"$hyprland" <<LUA
+
+$begin
+-- Windows-style snapping on floating workspaces. Tune it here, e.g.:
+-- ohsnap_config = { gap = 0, edge = 8, corner = 120 }
+dofile(os.getenv("HOME") .. "/.config/omarchy/plugins/$plugin_id/ohsnap.lua")
+$end
+LUA
+  say "added OhSnap to $hyprland (backup: $backup)"
+fi
+
+# 2. Make sure the shell side (outline + watcher) is enabled.
+if ! omarchy plugin list 2>/dev/null | grep -F "$plugin_id" | grep -qiE 'enabled|yes|on'; then
+  omarchy plugin enable "$plugin_id" >/dev/null 2>&1 || true
+fi
+
+# 3. Optional: the input group, for snapping the instant the button is released.
+if id -nG "$USER" | tr ' ' '\n' | grep -qx input || getent group input | cut -d: -f4 | tr ',' '\n' | grep -qx "$USER"; then
+  say "you are already in the input group."
+else
+  if [[ $input_group == "ask" ]]; then
+    echo
+    echo "OhSnap can snap the instant you release the mouse, like Windows. That needs"
+    echo "your user in the 'input' group, which also lets any program you run read raw"
+    echo "keyboard and mouse input. Without it, a window snaps on the first mouse"
+    echo "movement after you release it."
+    read -r -p "Add $USER to the input group? [y/N] " reply
+    [[ $reply =~ ^[Yy] ]] && input_group="yes" || input_group="no"
+  fi
+  if [[ $input_group == "yes" ]]; then
+    sudo usermod -aG input "$USER"
+    say "added $USER to the input group. Log out and back in for it to take effect."
+  else
+    say "skipped the input group; windows will snap on the next mouse movement after release."
+  fi
+fi
+
+# 4. Apply.
+hyprctl reload >/dev/null
+errors=$(hyprctl configerrors 2>/dev/null | grep -v '^\s*$' || true)
+if [[ -n $errors ]]; then
+  echo "ohsnap: Hyprland reported config errors:" >&2
+  echo "$errors" >&2
+  exit 1
+fi
+say "done. Set a workspace to floating (Super + L) and drag a window to an edge."

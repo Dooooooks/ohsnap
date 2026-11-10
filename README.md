@@ -2,6 +2,8 @@
 
 Windows 11 style window snapping for [Omarchy](https://omarchy.org) floating workspaces.
 
+![A window dragged to the left edge, with the outline showing where it will snap](preview.png)
+
 On a workspace set to floating (Super + L, or Appearance > Workspace Layout), drag a
 window by its titlebar (or with Super + left mouse):
 

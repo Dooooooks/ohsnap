@@ -6,8 +6,11 @@
   "author": "dooooooks",
   "license": "MIT",
   "description": "Windows 11 style window snapping for floating workspaces: drag a window to the top to maximize, to a side for half the screen, or to a corner for a quarter, with a live outline of where it will land.",
-  "kinds": ["service"],
+  "kinds": [
+    "service"
+  ],
   "entryPoints": {
     "service": "SnapPreview.qml"
-  }
+  },
+  "preview": "preview.png"
 }

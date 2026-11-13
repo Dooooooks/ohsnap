@@ -83,4 +83,4 @@ sudo gpasswd -d "$USER" input   # only if you joined it for OhSnap
 ## Support
 If you like OhSnap, consider buying me a coffee:
 
-☕ buymeacoffee.com/dook13s
+[☕ buymeacoffee.com/dook13s](https://buymeacoffee.com/dook13s)

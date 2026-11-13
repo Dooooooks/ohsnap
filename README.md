@@ -79,3 +79,8 @@ sudo gpasswd -d "$USER" input   # only if you joined it for OhSnap
 - `ohsnap-watch` reads the left button's release from the mouse devices and calls
   `window_snap_release()` in Hyprland through `hyprctl eval`. It exits if it lacks
   permission, and OhSnap falls back to snapping on the next mouse movement.
+
+## Support
+If you like OhSnap, consider buying me a coffee:
+
+☕ buymeacoffee.com/dook13s
